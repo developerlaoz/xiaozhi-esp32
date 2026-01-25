@@ -467,6 +467,9 @@ choice BOARD_TYPE
     config BOARD_TYPE_HU_087
         bool "HU-087"
         depends on IDF_TARGET_ESP32S3
+    config BOARD_TYPE_XIAO_ESP32S3_SENSE
+        bool "Xiao ESP32S3 Sense (with MAX98357A & GC9A01A)"
+        depends on IDF_TARGET_ESP32S3
 endchoice
 
 choice
