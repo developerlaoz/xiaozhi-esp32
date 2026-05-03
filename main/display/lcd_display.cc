@@ -113,6 +113,10 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
     ESP_LOGI(TAG, "Initialize LVGL library");
     lv_init();
 
+    // Initialize round mask for circular LCD (GC9A01)
+    // This creates a clipping area that makes content appear circular
+    round_mask_initialized_ = false;
+
 #if CONFIG_SPIRAM
     // lv image cache, currently only PNG is supported
     size_t psram_size_mb = esp_psram_get_size() / 1024 / 1024;
@@ -487,7 +491,10 @@ void LcdDisplay::SetupUI() {
     lv_obj_add_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
 
     emoji_image_ = lv_img_create(screen);
-    lv_obj_align(emoji_image_, LV_ALIGN_TOP_MID, 0, text_font->line_height + lvgl_theme->spacing(8));
+    lv_obj_align(emoji_image_, LV_ALIGN_CENTER, 0, 0);
+    // Set emoji size to 2x of screen height to fit large emojis
+    lv_obj_set_size(emoji_image_, height_ * 2 / 3, height_ * 2 / 3);
+    lv_img_set_zoom(emoji_image_, 384);  // 1.5x zoom (256 = 1x)
 
     // Display AI logo while booting
     emoji_label_ = lv_label_create(screen);
@@ -495,6 +502,8 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
     lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
     lv_label_set_text(emoji_label_, FONT_AWESOME_MICROCHIP_AI);
+    
+    // Note: text_scale not available in LVGL 9, emoji_image_ handles emoji zoom
 }
 #if CONFIG_IDF_TARGET_ESP32P4
 #define  MAX_MESSAGES 40
@@ -841,9 +850,13 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
     lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
     lv_label_set_text(emoji_label_, FONT_AWESOME_MICROCHIP_AI);
+    // Note: text_scale not available in LVGL 9, emoji_image_ handles emoji zoom
 
     emoji_image_ = lv_img_create(emoji_box_);
     lv_obj_center(emoji_image_);
+    // Set emoji size to 2x of screen height to fit large emojis
+    lv_obj_set_size(emoji_image_, height_ * 2 / 3, height_ * 2 / 3);
+    lv_img_set_zoom(emoji_image_, 384);  // 1.5x zoom (256 = 1x)
     lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
 
     /* Middle layer: preview_image_ - centered display */
@@ -1307,4 +1320,34 @@ void LcdDisplay::SetHideSubtitle(bool hide) {
             }
         }
     }
+}
+
+// SpiLcdDisplay override SetupUI with round mask for circular LCD
+void SpiLcdDisplay::SetupUI() {
+    if (setup_ui_called_) {
+        ESP_LOGW(TAG, "SpiLcdDisplay SetupUI() called multiple times, skipping");
+        return;
+    }
+
+    // Call base class SetupUI
+    LcdDisplay::SetupUI();
+
+    if (round_mask_initialized_) {
+        return;
+    }
+    round_mask_initialized_ = true;
+
+    // Apply round mask to the screen for circular LCD effect
+    auto screen = lv_screen_active();
+    
+    // Calculate radius - use 90% of the smaller dimension for a nice circular effect
+    lv_coord_t radius = (width_ < height_ ? width_ : height_) * 90 / 100;
+    
+    // Set screen radius for clipping effect
+    lv_obj_set_style_radius(screen, radius, 0);
+    
+    // Enable clip corner to create the circular mask effect
+    lv_obj_set_style_clip_corner(screen, true, 0);
+    
+    ESP_LOGI(TAG, "Round mask applied: radius=%d for %dx%d display", radius, width_, height_);
 }
